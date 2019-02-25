@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script>window.$ = window.jQuery = require('jquery');</script>
+    <link rel="stylesheet" href="../bootstrap/bootstrap.min.css">
+    <script src="../bootstrap/bootstrap.min.js"></script>
+</head>
+
+<body>
+    <div class="container">
+
+
+        </script>
+        <h2>Table</h2>
+        <p>The .table-hover class enables a hover state on table rows within a tbody:</p>
+        <table class="table table-hover" id="names">
+            <thead>
+                <tr>
+                    <th>Firstname</th>
+                    <th>LastName</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+</body>
+<script>
+    const electron = require("electron");
+    const ipc = electron.ipcRenderer;
+    
+    function addData(nl, data) {
+        data.forEach((d, i) => {
+            var tr = nl.insertRow(i);
+            Object.keys(d).forEach((k, j) => {
+                var cell = tr.insertCell(j);
+                cell.innerHTML = d[k];
+            });
+            nl.appendChild(tr);
+        })
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        ipc.send("DataDisplayLoaded");
+        ipc.on("dataSent", function (evt, result) {
+            var tBody = document.querySelector("#names tbody");
+            addData(tBody, result);
+        });
+    });
+</script>
+
+</html>
