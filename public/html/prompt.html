@@ -1,0 +1,25 @@
+<style>
+    form {
+        text-align: center;
+    }
+</style>
+
+<body>
+    <form>
+        <input type="text" id="data" value="">
+        <input type="button" id="ok" value="Submit" onclick="response()">
+        <form>
+            <script>
+                const { ipcRenderer } = require("electron")
+                function response() {
+                    ipcRenderer.send("closeDialog", document.getElementById("data").value)
+                    this.close();
+                }
+
+                window.onload = function () {
+                    var options = ipcRenderer.sendSync("openDialog", "")
+                    var params = JSON.parse(options)
+                    document.getElementById("data").value = params.value;
+                }
+            </script>
+</body>

@@ -2,7 +2,25 @@ const { BrowserWindow, ipcMain } = require("electron")
 const remote = require('electron');
 const app = remote.app;
 const path = require('path');
-const dev = require('electron-is-dev');;
+const dev = require('electron-is-dev');
+
+var crypto = require('crypto');
+
+function salt() {
+	var length = 16;
+	return crypto.randomBytes(Math.ceil(length / 2))
+		.toString('hex') /** convert to hexadecimal format */
+		.slice(0, length);   /** return required number of characters */
+};
+function hash(password, salt) {
+	var hash = crypto.createHmac('sha512', salt); /** Hashing algorithm sha512 */
+	hash.update(password);
+	var value = hash.digest('hex');
+	return {
+		salt: salt,
+		passwordHash: value
+	};
+};
 
 const pathname = dev ? path.join(__dirname, '/../extraResources/database.sqlite')
 	: path.join(app.getPath('appData'), '..', 'Local', 'Programs', 'capstone', 'resources', 'extraResources', 'database.sqlite');
@@ -17,7 +35,7 @@ var knex = require("knex")({
 });
 
 app.on("ready", () => {
-	let mainWindow = new BrowserWindow({ width: 900, height: 680 })
+	let mainWindow = new BrowserWindow({ width: 1400, height: 800 })
 	mainWindow.loadURL(dev ? 'http://localhost:3000' : `file://${path.join(__dirname, '../build/html/signin.html')}`);
 	mainWindow.on('closed', () => mainWindow = null);
 	mainWindow.webContents.openDevTools();
@@ -35,13 +53,37 @@ app.on("ready", () => {
 	ipcMain.on("clickedLogin", function (event, data) {
 		var name = data[0];
 		var pass = data[1];
-		let result = knex("Users").where({ UserName: name, Password: pass }).select("ID");
-		result.then((ID) => {
-			if (ID.length === 1) {
-				userID = ID[0].ID;
-				event.returnValue = true;
-
+		let userSalt = knex("Users").where({ UserName: name }).select("Salt");
+		var salty = "";
+		var userHashedPass = "";
+		userSalt.then((s) => {
+			if (s.length === 1) {
+				salty = s[0].Salt;
 			} else {
+				event.returnValue = false;
+			}
+		})
+
+		let userPass = knex("Users").where({ UserName: name }).select("Password");
+		userPass.then((up) => {
+			if (up.length === 1) {
+				userHashedPass = up[0].Password;
+				if (hash(pass, salty).passwordHash === userHashedPass) {
+					let result = knex("Users").where({ UserName: name, Password: userHashedPass }).select("ID");
+					result.then((ID) => {
+						if (ID.length === 1) {
+							userID = ID[0].ID;
+							event.returnValue = true;
+						} else {
+							event.returnValue = false;
+						}
+					})
+				}
+				else {
+					event.returnValue = false;
+				}
+			}
+			else {
 				event.returnValue = false;
 			}
 		})
@@ -54,6 +96,7 @@ app.on("ready", () => {
 		var email = data[3];
 		var phone = data[4];
 		var pass = data[5];
+		var pin = data[6];
 		let result1 = knex("Users").where({ UserName: name }).select("ID");
 		let result2 = knex("Users").where({ Email: email }).select("ID");
 		result1.then((theID) => {
@@ -66,15 +109,111 @@ app.on("ready", () => {
 				event.returnValue = false;
 			}
 		})
-		knex("Users").insert({ FirstName: fName, LastName: lName, UserName: name, Email: email, Phone: phone, Password: pass }).then(otherDataResults => {
-			console.log();
-		  });
-		 let user = knex("Users").where({ UserName: name, Password: pass }).select("ID");
-		 user.then((theID) =>{
-			userID= theID[0].ID
-		 })
-		 event.returnValue = true;
+		var saltPass = salt();
+		var hashedPass = hash(pass, saltPass);
+
+		var saltPin = salt();
+		var hashedPin = hash(pin, saltPin);
+
+		knex("Users").insert({ FirstName: fName, LastName: lName, UserName: name, Email: email, Phone: phone, Password: hashedPass.passwordHash, Salt: saltPass, Pin: hashedPin.passwordHash, PinSalt: saltPin }).then(otherDataResults => { });
+		let user = knex("Users").where({ UserName: name, Password: hashedPass.passwordHash }).select("ID");
+		user.then((theID) => {
+			userID = theID[0].ID
+		})
+		event.returnValue = true;
 	});
+
+	ipcMain.on("TypedPin", function (event, data) {
+		var typedPin = data;
+		let userPin = knex("Users").where({ ID: userID });
+		userPin.then((that) => {
+			var pin = that[0].Pin;
+			var pinsalt = that[0].PinSalt;
+			if (hash(typedPin, pinsalt).passwordHash === pin) {
+				event.returnValue = true;
+			}
+			else {
+				event.returnValue = false;
+			}
+		})
+	})
+
+	ipcMain.on("askingForPassAndSalt", function (event) {
+		let userQ = knex("Users").where({ ID: userID });
+		userQ.then((user) => {
+			var hashedPass = user[0].Password;
+			var passSalt = user[0].Salt;
+
+			var array = [hashedPass, passSalt];
+			event.returnValue = array;
+
+		})
+	})
+	ipcMain.on("sendingNewEncryptedCard", function (event, data) {
+		event.returnValue = knex("cards").insert({ ID: userID, Card_Nickname: data[0], Card_Number: data[1], Security_Code: data[2], Exp_Date: data[3], Address: data[4] }).then(otherDataResults => { });
+	})
+	ipcMain.on("sendingNewEncryptedWebsite", function (event, data) {
+		event.returnValue = knex("Accounts").insert({ ID: userID, Account_Name: data[0], Account_email: data[1], Account_Password: data[2] }).then(otherDataResults => { });
+
+	})
+	var promptWindow;
+	var promptOptions
+	var promptAnswer;
+
+	// Creating the dialog
+
+	function promptModal(parent, options, callback) {
+		promptOptions = options;
+		promptWindow = new BrowserWindow({
+			width: 300, height: 105,
+			'parent': parent,
+			'show': false,
+			'modal': true,
+			'alwaysOnTop': true,
+			'title': options.title,
+			'autoHideMenuBar': true,
+			'webPreferences': {
+				"nodeIntegration": true,
+				"sandbox": false
+			}
+		});
+		promptWindow.on('closed', () => {
+			promptWindow = null
+			callback(promptAnswer);
+		})
+
+		// Load the HTML dialog box
+		promptWindow.loadURL(dev ? path.join(__dirname, "/html/prompt.html") : path.join(__dirname, "../build/html/prompt.html" ))
+		promptWindow.once('ready-to-show', () => { promptWindow.show() })
+	}
+
+	// Called by the dialog box to get its parameters
+
+	ipcMain.on("openDialog", (event, data) => {
+		event.returnValue = JSON.stringify(promptOptions, null, '')
+	})
+
+	// Called by the dialog box when closed
+
+	ipcMain.on("closeDialog", (event, data) => {
+		promptAnswer = data
+	})
+
+	// Called by the application to open the prompt dialog
+
+	ipcMain.on("prompt", (event, notused) => {
+		promptModal(mainWindow, {
+			"title": "Enter your 6 digit pin",
+			"label": "Pin",
+			"value": "",
+			"ok": "Submit"
+		},
+			function (data) {
+				event.returnValue = data
+			}
+		);
+	});
+
 });
 
 

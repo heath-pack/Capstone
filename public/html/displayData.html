@@ -4,17 +4,18 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script>window.$ = window.jQuery = require('jquery');</script>
+    <script src="../functions.js" type="text/javascript"></script>
     <link rel="stylesheet" href="../bootstrap/bootstrap.min.css">
     <script src="../bootstrap/bootstrap.min.js"></script>
 </head>
 
 <body>
+    <p id="demo"></p>
+    <script>
+
+    </script>
     <div class="container">
-
-
-        </script>
         <h2>Table</h2>
-        <p>The .table-hover class enables a hover state on table rows within a tbody:</p>
         <table class="table table-hover" id="names">
             <thead>
                 <tr>
@@ -24,13 +25,54 @@
             </thead>
             <tbody></tbody>
         </table>
+        <table class="table table-hover" id="websites" align='center' cellspacing=2 cellpadding=5 border=1>
+            <thead>
+                <tr>
+                    <th>Website</th>
+                    <th>Email</th>
+                    <th>Password</th>
+                    <th>Edit Table</th>
+                </tr>
+            </thead>
+            <tbody>
+            <tbody>
+                <tr>
+                    <td><input type="text" id="new_website"></td>
+                    <td><input type="text" id="new_email"></td>
+                    <td><input type="text" id="new_password"></td>
+                    <td><input type="button" class="add" onclick="add_row('website');" value="Add Row"></td>
+                </tr>
+            </tbody>
+            </tbody>
+        </table>
+        <table class="table table-hover" id="Cards" align='center' cellspacing=2 cellpadding=5 border=1>
+            <thead>
+                <tr>
+                    <th>Credit/Debit Card</th>
+                    <th>Card Number</th>
+                    <th>Security Code</th>
+                    <th>Address</th>
+                    <th>Exp. Date</th>
+                    <th>Edit Table</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><input type="text" id="new_cardName"></td>
+                    <td><input type="text" id="new_cardNum"></td>
+                    <td><input type="text" id="new_secNum"></td>
+                    <td><input type="text" id="new_exp"></td>
+                    <td><input type="text" id="new_address"></td>
+                    <td><input type="button" class="add" onclick="add_row('cards');" value="Add Row"></td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
 </body>
 <script>
-    const electron = require("electron");
-    const ipc = electron.ipcRenderer;
-    
+    const userPrompt = require('electron-osx-prompt');
+
     function addData(nl, data) {
         data.forEach((d, i) => {
             var tr = nl.insertRow(i);
@@ -41,14 +83,64 @@
             nl.appendChild(tr);
         })
     }
+    var pin;
+    function wrapper() {
+        answer = ipc.sendSync("prompt", "")
+        if (answer != "")
+            // document.getElementById("answer").innerHTML = answer;
+            pin = answer;
+        //userPrompt('Pin', 'Enter your Pin')
+        //     .then(input => {
+        //         pin = input;
+        //     })
+        //     .catch(err => {
+        //         console.log(err);
+        //     });
+    }
+    document.addEventListener("DOMContentLoaded", function callMe() {
+        var answer = ipc.sendSync("prompt", "")
+        if (answer != "") {
+            pin = answer;
+            if (pin == null || pin === "" || pin.length !== 6) {
+                alert("Incorrect Pin!");
+                callMe();
+            } else if (ipc.sendSync("TypedPin", pin) === true) {
+                ipc.send("DataDisplayLoaded");
+                ipc.on("dataSent", function (evt, result) {
+                    var tBody = document.querySelector("#names tbody");
+                    addData(tBody, result);
+                });
+            } else {
+                alert("Incorrect Pin!");
+                callMe();
+            }
 
-    document.addEventListener("DOMContentLoaded", function () {
-        ipc.send("DataDisplayLoaded");
-        ipc.on("dataSent", function (evt, result) {
-            var tBody = document.querySelector("#names tbody");
-            addData(tBody, result);
-        });
-    });
+        } else {
+            alert("Incorrect Pin!");
+            callMe();
+        }
+    })
+    
+
+        // // wrapper().then(result => {
+        // if (pin == null || pin === "" || pin.length !== 6) {
+        //     alert("Incorrect Pin!");
+        //     callMe();
+        //     //     } else if (ipc.sendSync("TypedPin", pin) === true) {
+        //     //         ipc.send("DataDisplayLoaded");
+        //     //         ipc.on("dataSent", function (evt, result) {
+        //     //             var tBody = document.querySelector("#names tbody");
+        //     //             addData(tBody, result);
+        //     //         });
+        //     //     } else {
+        //     //         alert("Incorrect Pin!");
+        //     //         callMe();
+        //     //     }
+        //     // })
+        //     //     .catch(err => {
+        //     //         console.log(err);
+        //     //     })
+        // });
 </script>
 
 </html>
