@@ -34,8 +34,8 @@
                     <th>Edit Table</th>
                 </tr>
             </thead>
-            <tbody>
-            <tbody>
+
+            <tbody id="websites">
                 <tr>
                     <td><input type="text" id="new_website"></td>
                     <td><input type="text" id="new_email"></td>
@@ -43,9 +43,9 @@
                     <td><input type="button" class="add" onclick="add_row('website');" value="Add Row"></td>
                 </tr>
             </tbody>
-            </tbody>
+
         </table>
-        <table class="table table-hover" id="Cards" align='center' cellspacing=2 cellpadding=5 border=1>
+        <table class="table table-hover" align='center' cellspacing=2 cellpadding=5 border=1>
             <thead>
                 <tr>
                     <th>Credit/Debit Card</th>
@@ -56,7 +56,7 @@
                     <th>Edit Table</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="Cards">
                 <tr>
                     <td><input type="text" id="new_cardName"></td>
                     <td><input type="text" id="new_cardNum"></td>
@@ -71,32 +71,122 @@
 
 </body>
 <script>
-    const userPrompt = require('electron-osx-prompt');
+    function addButtons(type, tr, num) {
+        if (type === "websites") {
+            var td = tr.insertCell();
+            var button = document.createElement('input');
+            button.type = "button";
+            button.value = "Edit";
+            button.id = "edit_button_w" + num;
+            var button2 = document.createElement('input');
+            button2.type = "button";
+            button2.value = "Save";
+            button2.id = "save_button_w" + num;
+            var button3 = document.createElement('input');
+            button3.type = "button";
+            button3.value = "Delete";
+            button3.id = "delete_w" + num;
+            td.appendChild(button);
+            td.appendChild(button2);
+            td.appendChild(button3);
+        } else {
+            var td = tr.insertCell();
+            var button = document.createElement('input');
+            button.type = "button";
+            button.value = "Edit";
+            button.id = "edit_button" + num;
+            var button2 = document.createElement('input');
+            button2.type = "button";
+            button2.value = "Save";
+            button2.id = "save_button" + num;
+            var button3 = document.createElement('input');
+            button3.type = "button";
+            button3.value = "Delete";
+            button3.id = "delete" + num;
+            td.appendChild(button);
+            td.appendChild(button2);
+            td.appendChild(button3);
+        }
 
-    function addData(nl, data) {
-        data.forEach((d, i) => {
-            var tr = nl.insertRow(i);
-            Object.keys(d).forEach((k, j) => {
-                var cell = tr.insertCell(j);
-                cell.innerHTML = d[k];
-            });
-            nl.appendChild(tr);
-        })
+    }
+
+    function addData(type, nl, data) {
+        if (type === "websites") {
+            var cnt = 1;
+            data.forEach((d, i) => {
+                var tr = nl.insertRow(i);
+                Object.keys(d).forEach((k, j) => {
+                    var cell = tr.insertCell(j);
+                    if (j === 0) {
+                        cell.innerHTML = d[k];
+                    }
+                     else {
+                         var v = d[k];
+                         v.toString('base64');
+                         cell.innerHTML = decrypt(v);
+                    }
+                        switch (j) {
+                            case 0:
+                                cell.id = "website_row" + cnt;
+
+                                break;
+                            case 1:
+                                cell.id = "email_row" + cnt;
+                                break;
+                            case 2:
+                                cell.id = "password_row" + cnt;
+                                break;
+                        }
+
+                    });
+
+                addButtons(type, tr, cnt);
+                nl.appendChild(tr);
+                tr.id = "row_w" + getAccRowID(document.getElementById("website_row" + cnt).innerHTML);
+                cnt++;
+            })
+        } else {
+            var cnt = 1;
+            data.forEach((d, i) => {
+                var tr = nl.insertRow(i);
+                Object.keys(d).forEach((k, j) => {
+                    var cell = tr.insertCell(j);
+                    if (j === 0) {
+                        cell.innerHTML = d[k];
+                    }
+                     else {
+                         var v = d[k];
+                         v.toString('base64');
+                         cell.innerHTML = decrypt(v);
+                    }
+                    switch (j) {
+                        case 0:
+                            cell.id = "cardName_row" + cnt;
+
+                            break;
+                        case 1:
+                            cell.id = "cardNum_row" + cnt;
+                            break;
+                        case 2:
+                            cell.id = "secNum_row" + cnt;
+                            break;
+                        case 3:
+                            cell.id = "exp_row" + cnt;
+                            break;
+                        case 4:
+                            cell.id = "address_row" + cnt;
+                            break;
+                    }
+
+                });
+                addButtons(type, tr, cnt);
+                nl.appendChild(tr);
+                tr.id = "row" + getAccRowID(document.getElementById("cardName_row" + cnt).innerHTML);
+                cnt++;
+            })
+        }
     }
     var pin;
-    function wrapper() {
-        answer = ipc.sendSync("prompt", "")
-        if (answer != "")
-            // document.getElementById("answer").innerHTML = answer;
-            pin = answer;
-        //userPrompt('Pin', 'Enter your Pin')
-        //     .then(input => {
-        //         pin = input;
-        //     })
-        //     .catch(err => {
-        //         console.log(err);
-        //     });
-    }
     document.addEventListener("DOMContentLoaded", function callMe() {
         var answer = ipc.sendSync("prompt", "")
         if (answer != "") {
@@ -106,9 +196,39 @@
                 callMe();
             } else if (ipc.sendSync("TypedPin", pin) === true) {
                 ipc.send("DataDisplayLoaded");
-                ipc.on("dataSent", function (evt, result) {
-                    var tBody = document.querySelector("#names tbody");
-                    addData(tBody, result);
+                ipc.on("accDataSent", function (evt, result) {
+                    var tBody = document.querySelector("#websites tbody");
+                    addData("websites", tBody, result);
+                    var length = document.getElementById("websites").rows.length;
+                    console.log("length", length);
+                    for (let i = 1; i < length; i++) {
+                        (function () {
+
+                            document.getElementById("edit_button_w" + i).onclick = function () { edit_row("websites", i) };
+
+                            document.getElementById("save_button_w" + i).onclick = function () { save_row("websites", i) };
+
+                            document.getElementById("save_button_w" + i).style.display = "none";
+
+                            document.getElementById("delete_w" + i).onclick = function () { delete_row("websites", i) };
+                        }());
+                    }
+                });
+                ipc.on("cardDataSent", function (evt, result) {
+                    var tBody = document.querySelector("#Cards tbody");
+                    addData("cards", tBody, result);
+                    var length = document.getElementById("Cards").rows.length;
+                    for (let i = 1; i < length; i++) {
+                        (function () {
+                            document.getElementById("edit_button" + i).onclick = function () { edit_row("cards", i) };
+
+                            document.getElementById("save_button" + i).onclick = function () { save_row("cards", i) };
+
+                            document.getElementById("save_button" + i).style.display = "none";
+
+                            document.getElementById("delete" + i).onclick = function () { delete_row("cards", i) };
+                        }());
+                    }
                 });
             } else {
                 alert("Incorrect Pin!");
@@ -120,27 +240,7 @@
             callMe();
         }
     })
-    
 
-        // // wrapper().then(result => {
-        // if (pin == null || pin === "" || pin.length !== 6) {
-        //     alert("Incorrect Pin!");
-        //     callMe();
-        //     //     } else if (ipc.sendSync("TypedPin", pin) === true) {
-        //     //         ipc.send("DataDisplayLoaded");
-        //     //         ipc.on("dataSent", function (evt, result) {
-        //     //             var tBody = document.querySelector("#names tbody");
-        //     //             addData(tBody, result);
-        //     //         });
-        //     //     } else {
-        //     //         alert("Incorrect Pin!");
-        //     //         callMe();
-        //     //     }
-        //     // })
-        //     //     .catch(err => {
-        //     //         console.log(err);
-        //     //     })
-        // });
 </script>
 
 </html>

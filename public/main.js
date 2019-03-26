@@ -6,6 +6,8 @@ const dev = require('electron-is-dev');
 
 var crypto = require('crypto');
 
+var functions = require('./functions');
+
 function salt() {
 	var length = 16;
 	return crypto.randomBytes(Math.ceil(length / 2))
@@ -38,14 +40,18 @@ app.on("ready", () => {
 	let mainWindow = new BrowserWindow({ width: 1400, height: 800 })
 	mainWindow.loadURL(dev ? 'http://localhost:3000' : `file://${path.join(__dirname, '../build/html/signin.html')}`);
 	mainWindow.on('closed', () => mainWindow = null);
-	mainWindow.webContents.openDevTools();
+	//mainWindow.webContents.openDevTools();
 	mainWindow.once("ready-to-show", () => { mainWindow.show() })
 	var userID;
 
 	ipcMain.on("DataDisplayLoaded", () => {
-		let result = knex("Users").where({ ID: userID }).select("FirstName", "LastName");
+		let result = knex("Accounts").where({ ID: userID }).select("Account_Name", "Account_Password", "Account_email");
 		result.then((data) => {
-			mainWindow.webContents.send("dataSent", data);
+			mainWindow.webContents.send("accDataSent", data);
+		})
+		let result2 = knex("Cards").where({ ID: userID }).select("Card_Nickname","Card_Number", "Security_Code", "Exp_Date", "Address");
+		result2.then((data ) =>{
+			mainWindow.webContents.send("cardDataSent", data);
 		})
 	});
 
@@ -149,13 +155,77 @@ app.on("ready", () => {
 
 		})
 	})
+
 	ipcMain.on("sendingNewEncryptedCard", function (event, data) {
-		event.returnValue = knex("cards").insert({ ID: userID, Card_Nickname: data[0], Card_Number: data[1], Security_Code: data[2], Exp_Date: data[3], Address: data[4] }).then(otherDataResults => { });
+		var isUnique = true;
+		var v = knex("Cards").insert({ ID: userID, Card_Nickname: data[0], Card_Number: data[1], Security_Code: data[2], Exp_Date: data[3], Address: data[4] }).then(otherDataResults => { }).catch(function (error) { isUnique = false });
+		v.then((x) => {
+			if (isUnique) {
+				event.returnValue = true;
+			} else {
+				event.returnValue = false;
+			}
+		});
 	})
+
 	ipcMain.on("sendingNewEncryptedWebsite", function (event, data) {
-		event.returnValue = knex("Accounts").insert({ ID: userID, Account_Name: data[0], Account_email: data[1], Account_Password: data[2] }).then(otherDataResults => { });
+		var isUnique = true;
+		var v = knex("Accounts").insert({ ID: userID, Account_Name: data[0], Account_email: data[1], Account_Password: data[2] }).then(otherDataResults => { }).catch(function (error) { isUnique = false });
+		v.then((x) => {
+			if (isUnique) {
+				event.returnValue = true;
+			} else {
+				event.returnValue = false;
+			}
+		});
 
 	})
+
+	ipcMain.on("askingForCardRowID", function (event, data) {
+		var R = knex("Cards").where({ Card_Nickname: data }).select("Row_ID");
+		R.then((x) => {
+			event.returnValue = x[0].Row_ID;
+		})
+	})
+
+	ipcMain.on("askingForAccRowID", function (event, data) {
+		var R = knex("Accounts").where({ Account_Name: data }).select("Row_ID");
+		R.then((x) => {
+			event.returnValue = x[0].Row_ID;
+		})
+
+	})
+
+	ipcMain.on("updatingDB", function (event, data) {
+		var isUnique = true;
+		if (data[0] === "cards") {
+			var v = event.returnValue = knex("Cards").where({ Row_ID: data[1] }).update({ Card_Nickname: data[2], Card_Number: data[3], Security_Code: data[4], Exp_Date: data[5], Address: data[6] }).then(otherDataResults => { }).catch(function (error) { isUnique = false });
+			v.then((x) => {
+				if (isUnique) {
+					event.returnValue = true;
+				} else {
+					event.returnValue = false;
+				}
+			})
+		} else {
+			var c = knex("Accounts").where({ Row_ID: data[1] }).update({ Account_Name: data[2], Account_email: data[3], Account_Password: data[4] }).then(otherDataResults => { }).catch(function (error) { isUnique = false });
+			c.then((x) => {
+				if (isUnique) {
+					event.returnValue = true;
+				} else {
+					event.returnValue = false;
+				}
+			})
+		}
+	})
+
+	ipcMain.on("DeleteCardRow", function (event, data) {
+		event.returnValue = knex("Cards").where({ Row_ID: data }).del().then(otherDataResults => { });
+	})
+	ipcMain.on("DeleteAccRow", function (event, data) {
+		event.returnValue = knex("Accounts").where({ Row_ID: data }).del().then(otherDataResults => { });
+	})
+
 	var promptWindow;
 	var promptOptions
 	var promptAnswer;
@@ -183,7 +253,7 @@ app.on("ready", () => {
 		})
 
 		// Load the HTML dialog box
-		promptWindow.loadURL(dev ? path.join(__dirname, "/html/prompt.html") : path.join(__dirname, "../build/html/prompt.html" ))
+		promptWindow.loadURL(dev ? path.join(__dirname, "/html/prompt.html") : path.join(__dirname, "../build/html/prompt.html"))
 		promptWindow.once('ready-to-show', () => { promptWindow.show() })
 	}
 
