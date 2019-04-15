@@ -1,19 +1,24 @@
-const { BrowserWindow, ipcMain } = require("electron")
-const remote = require('electron');
-const app = remote.app;
+const { BrowserWindow, ipcMain } = require("electron");
+const app = require('electron').app;
 const path = require('path');
 const dev = require('electron-is-dev');
 
 var crypto = require('crypto');
 
-var functions = require('./functions');
-
+/**
+ * Creates a random 16 bit salt
+ */
 function salt() {
 	var length = 16;
 	return crypto.randomBytes(Math.ceil(length / 2))
 		.toString('hex') /** convert to hexadecimal format */
 		.slice(0, length);   /** return required number of characters */
 };
+/**
+ * 
+ * @param {The password to be hashed} password 
+ * @param {The salt to be added to the password before hashing} salt 
+ */
 function hash(password, salt) {
 	var hash = crypto.createHmac('sha512', salt); /** Hashing algorithm sha512 */
 	hash.update(password);
@@ -23,10 +28,14 @@ function hash(password, salt) {
 		passwordHash: value
 	};
 };
-
+/**
+ * Makes sure the path is correct given the context of decelopmental or distribution
+ */
 const pathname = dev ? path.join(__dirname, '/../extraResources/database.sqlite')
-	: path.join(app.getPath('appData'), '..', 'Local', 'Programs', 'capstone', 'resources', 'extraResources', 'database.sqlite');
-
+	: path.join(__dirname, '..', '..', 'extraResources', 'database.sqlite');
+/**
+ * Initializes a knex object, which is used to read/write from the database.
+ */
 var knex = require("knex")({
 	client: "sqlite",
 	connection: {
@@ -35,27 +44,36 @@ var knex = require("knex")({
 	},
 	useNullAsDefault: true,
 });
-
+/**
+ * starts the app and has all of the communcation between processes 
+ */
 app.on("ready", () => {
-	let mainWindow = new BrowserWindow({ width: 1400, height: 800 })
+	let mainWindow = new BrowserWindow({ width: 1400, height: 800, icon: path.join(__dirname, 'icon.jpg'), title: "Local-Lock" });
 	mainWindow.loadURL(dev ? 'http://localhost:3000' : `file://${path.join(__dirname, '../build/html/signin.html')}`);
 	mainWindow.on('closed', () => mainWindow = null);
-	//mainWindow.webContents.openDevTools();
-	mainWindow.once("ready-to-show", () => { mainWindow.show() })
-	var userID;
 
+	mainWindow.once("ready-to-show", () => { mainWindow.show() })
+	mainWindow.setMenu(null);
+
+	var userID;
+	/**
+	 * waits for the DataDisplayLoaded message from the rendere and then querys the database and returns the website and card tables
+	 */
 	ipcMain.on("DataDisplayLoaded", () => {
-		let result = knex("Accounts").where({ ID: userID }).select("Account_Name", "Account_Password", "Account_email");
+		let result = knex("Accounts").where({ ID: userID }).column("Account_Name", "Account_email", "Account_Password").select().orderBy("Row_ID");
 		result.then((data) => {
-			mainWindow.webContents.send("accDataSent", data);
+			var data2 = data;
+			mainWindow.webContents.send("accDataSent", data2);
 		})
-		let result2 = knex("Cards").where({ ID: userID }).select("Card_Nickname","Card_Number", "Security_Code", "Exp_Date", "Address");
-		result2.then((data ) =>{
+		let result2 = knex("Cards").where({ ID: userID }).column("Card_Nickname", "Card_Number", "Security_Code", "Exp_Date", "Address").select().orderBy("Row_ID");
+		result2.then((data) => {
 			mainWindow.webContents.send("cardDataSent", data);
 		})
 	});
 
-
+	/**
+	 * waits until the user clicks log in and begins user authentification
+	 */
 	ipcMain.on("clickedLogin", function (event, data) {
 		var name = data[0];
 		var pass = data[1];
@@ -69,7 +87,9 @@ app.on("ready", () => {
 				event.returnValue = false;
 			}
 		})
-
+		/**
+		 * confirms username and passowrd match hasehed pass and that the user exists or returns false and prompts user to try again
+		 */
 		let userPass = knex("Users").where({ UserName: name }).select("Password");
 		userPass.then((up) => {
 			if (up.length === 1) {
@@ -94,7 +114,9 @@ app.on("ready", () => {
 			}
 		})
 	});
-
+	/**
+	 * takes the data from the create account page and adds the user to the database if it doesnt exist already
+	 */
 	ipcMain.on("clickedSignUp", function (event, data) {
 		var fName = data[0];
 		var lName = data[1];
@@ -128,7 +150,9 @@ app.on("ready", () => {
 		})
 		event.returnValue = true;
 	});
-
+	/**
+	 * checks that the pin is correct as well, snd form of authentifiaction
+	 */
 	ipcMain.on("TypedPin", function (event, data) {
 		var typedPin = data;
 		let userPin = knex("Users").where({ ID: userID });
@@ -143,7 +167,9 @@ app.on("ready", () => {
 			}
 		})
 	})
-
+	/**
+	 * asks for pass and salt for encryption and decryption
+	 */
 	ipcMain.on("askingForPassAndSalt", function (event) {
 		let userQ = knex("Users").where({ ID: userID });
 		userQ.then((user) => {
@@ -155,7 +181,9 @@ app.on("ready", () => {
 
 		})
 	})
-
+	/**
+	 * adds new card from user entry to the database after its encrypted
+	 */
 	ipcMain.on("sendingNewEncryptedCard", function (event, data) {
 		var isUnique = true;
 		var v = knex("Cards").insert({ ID: userID, Card_Nickname: data[0], Card_Number: data[1], Security_Code: data[2], Exp_Date: data[3], Address: data[4] }).then(otherDataResults => { }).catch(function (error) { isUnique = false });
@@ -167,7 +195,9 @@ app.on("ready", () => {
 			}
 		});
 	})
-
+	/**
+	 * adds new website from user entry to the database after its encrypted
+	 */
 	ipcMain.on("sendingNewEncryptedWebsite", function (event, data) {
 		var isUnique = true;
 		var v = knex("Accounts").insert({ ID: userID, Account_Name: data[0], Account_email: data[1], Account_Password: data[2] }).then(otherDataResults => { }).catch(function (error) { isUnique = false });
@@ -180,22 +210,29 @@ app.on("ready", () => {
 		});
 
 	})
-
+	/**
+	 * gets rowID to help with indexing the html table
+	 */
 	ipcMain.on("askingForCardRowID", function (event, data) {
 		var R = knex("Cards").where({ Card_Nickname: data }).select("Row_ID");
 		R.then((x) => {
 			event.returnValue = x[0].Row_ID;
 		})
 	})
-
+	/**
+	 * gets rowID to help with indexing the html table
+	 */
 	ipcMain.on("askingForAccRowID", function (event, data) {
 		var R = knex("Accounts").where({ Account_Name: data }).select("Row_ID");
 		R.then((x) => {
 			event.returnValue = x[0].Row_ID;
+
 		})
 
 	})
-
+	/**
+	 * updates db after the user adds
+	 */
 	ipcMain.on("updatingDB", function (event, data) {
 		var isUnique = true;
 		if (data[0] === "cards") {
@@ -218,23 +255,30 @@ app.on("ready", () => {
 			})
 		}
 	})
-
+	/**
+	 * deletes row
+	 */
 	ipcMain.on("DeleteCardRow", function (event, data) {
 		event.returnValue = knex("Cards").where({ Row_ID: data }).del().then(otherDataResults => { });
 	})
+	/**
+	 * deletes row
+ 	 */
 	ipcMain.on("DeleteAccRow", function (event, data) {
 		event.returnValue = knex("Accounts").where({ Row_ID: data }).del().then(otherDataResults => { });
 	})
 
 	var promptWindow;
-	var promptOptions
+	var promptOptions;
 	var promptAnswer;
 
-	// Creating the dialog
+	// Creating the dialog window
 
 	function promptModal(parent, options, callback) {
 		promptOptions = options;
 		promptWindow = new BrowserWindow({
+			alwaysOnTop: true,
+			frame: false,
 			width: 300, height: 105,
 			'parent': parent,
 			'show': false,
@@ -283,11 +327,12 @@ app.on("ready", () => {
 			}
 		);
 	});
-
 });
 
 
-
+/**
+ * kills the app when the window is closed
+ */
 app.on('window-all-closed', () => {
 	if (process.platform !== 'darwin') {
 		app.quit();
